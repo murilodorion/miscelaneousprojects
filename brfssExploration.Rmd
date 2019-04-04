@@ -1,0 +1,387 @@
+---
+title: "Exploring the BRFSS data"
+output:
+  html_document:
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+  pdf_document: default
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+* * *
+
+## Part 1: Data
+
+The BRFSS or was built with information gathered through random selection of US landline and cellphone numbers of all 50 states and participating territories. At first sight, this method should make the results representative of the country's population - which is not generalizable to other countries because of contrastic socioeconomic and cultural factors. However, a more careful look into the method elucidates possible biases on this dataset. 
+
+The United States has more mobile phone numbers than there are people. This means that there are users with more than one telephone. It is sensible to assume that less wealthy people will be less likely to be able to afford more than one number compared to wealthier people and, therefore, by randomly choosing telephone numbers, one is disproportionately more likely to call a wealthier person than a one with lower income. 
+
+To verify the effect of this methodological bias, we can compare `brfss2013` income data with another dataset that does not rely on calling subjects: I chose the Current Population Survey conducted by the US Census bureau.
+
+In both datasets, I chose to exclude non-respondents and the 'over $75,000', as this group is much more likely to be uncomfortable about disclosing income information through the phone and, if we are comparing a telephone-based and  in-person census poll, it is important to remove that bias. To make results comparable, however, those groups will be included in the percentual calculation, but excluded from further analysis 
+
+First, we prepare the `brfss2013` data:
+```{r warning=FALSE}
+income<-brfss2013 %>% group_by(income2) %>% summarise (percentage=n()/dim(brfss2013)[1])
+
+print(income[1:7,])
+
+```
+Next, we create the Current Population Survey dataframe, which was manually extracted from https://www.census.gov/data/tables/time-series/demo/income-poverty/cps-hinc/hinc-01.html
+```{r}
+CPCPercentages<-c(0.060469017,0.046047372,0.047740348,0.04802251,0.092251501,0.079021209,0.164500807,0.417702569)
+
+```
+The ratio between `income$percentages` and `CPCPercentages` indicates which social strata was over or underrepresented in this telephone poll. Therefore, I plotted this ratio, with a Y=1 line for reference to the 1:1 ratio that would appear if the datasets were equal in wealth distribution. On the X-axis, only the top boundary of the income level has been included for readability
+```{r}
+income<-cbind(income[1:7,], 'CPCPercentages'=CPCPercentages[1:7], 'income_level'=c("$10,000","$15,000","$20,000","$25,000","$35,000","$50,000","$75,000"))
+
+(ggplot(income,aes(x=income_level, y=(percentage/CPCPercentages))) + geom_point() )+ geom_abline(intercept=1, slope=0)
+```
+
+It is visible here that some income brackets (namely $25.000 and $50.000) are over 50% overrepresented in the sample, compared to CPC data. If the CPC methodology is robust, this indicates that the wealth composition of this dataset is not representative of the US population because of the use of telephones to gather data and, therefore, the results might not be always generalizable to the whole US population.
+
+Furthermore, some of the modules of the study are optional, and the states might opt in or out of those questions depending on their preferences. Thus, the answers of these modules are only representative of those states that chose them and cannot be generalized to the whole population. When dealing with these modules, it might be better to assess the results by state and not aggregate cross-state data, as the group formed by self-selected states is not meaningful as it is discontinuous and was formed without an objective criteria
+
+The present study is observational, as there has been no assignment to control or treatment groups and there has been no effort  to control for cofounding variables. Therefore, no causal conclusions can be drawn and only associations can be seen. The possible effect of cofounding variables must be considered throughout the analysis.
+
+**Part 1: conclusions**
+
+1. Any result is restricted to the United States
+
+2. The usage of telephone surveys renders the analysis not representative of the whole population
+
+3. The optional modules only create meaningful results inside each state that opted to apply it
+
+4. The study is observational and cannot draw causal conclusions
+
+* * *
+
+## Part 2: Research questions
+
+
+
+**Research quesion 1:**
+Race relations in the United States are a contentious topic, but the relevance of race for different groups differ. Many in the left see race discussions in universities as a constructive tool to promote social change and consciousness about the dificulties of opressed groups, while some in the right criticise this increased concern with race as result of indoctrination that intoxicates racial relations. 
+
+It is clear that the existance of an effect of college on racial perception is an important issue to both sides of the isle as, if college influences concern with race, it can be a powerful tool to increase social awareness or a cause of class warfare. I will leave the political and moral question to philosophers and political activists and evaluate if this effect exists.
+
+An indicator of the relative importance a person gives to race is the frequency they think about the issue. If college attendance increases sensitivity to racial issues, it would be expected that college graduates think more often about their race. 
+
+Therefore, I will assess the quesitons **Is education level associated to the frequency that a given person thinks about their race in Arizona?**.
+
+As information about race is encoded in an optional module, I will restrict my analysis to the state with a bigger sample size and, therefore, the one which is able to yield more representative results (Arizona), which are only representative of that state.
+
+
+To answer this question, I will consider the following variables, that are presented alongside the question that was asked in the survey:
+
+* `rrcongt2`: How often do you think about your race? Would you say never, once a year, once a month, once a week, once a day, once an hour, or constantly?
+
+* `educa`:What is the highest grade or year of school you completed?
+
+* `X_race`: Computed Race-Ethnicity Grouping
+
+And other mutations of those variables, which will be described in part 3.
+
+The relevance of `rrcogt2` and `educa` to the question are self-evident; the race variable will be used to control for different levels of access of higher education alongside races and the different level of relevance that race might have to different groups. 
+
+
+**Research quesion 2:**
+
+Mental health is a crucial issue in the United States nowadays, and a fairly subtle but important indicator of poor mental health is the practice of self-destructive behavior. These are a set of habits that cause some type of harm or increase risk to the person that performs the action.
+
+The harm of binge drinking and the potential risks of not wearing a seatbelt are well known. Therefore, the choice to engage in any of those two activities is usually taken with knowledge about the detrimental effects of those. While adults are capable of weighing the consequences of their actions, I would like to better understand the relationship between those potentially self-destructive behaviors and mental health. 
+
+Because of that, to better understand the relationship of these behaviors and mental health, I will attempt to answer the qustion *Is mental health associated with binge drinking and seatbelt usage?*
+
+I will be using the following variables: 
+
+* `menthlthl`: Now thinking about your mental health, which includes stress, depression, and problems with emotions, for how many days during the past 30 days was your mental health not good?
+
+* `seatbelt`: How often do you use seat belts when you drive or ride in a car? 
+
+* `drnk3ge5`: Considering all types of alcoholic beverages, how many times during the past 30 days did you have 5 or more drinks for men or 4 or more drinks for women on an occasion?
+
+
+**Research quesion 3:**
+Sleep has been observed to be crucial for a person's mental and physical well-being. The recomended number of hours of sleep is 8, but this is even more important for yournger people. Verifying if the population is getting the amount of sleep they need for their age group is an important public health information.
+
+Because of that, I will attempt to answer the question *How does the average sleeping time relate to age?*. Ideally, sleeping times would peak during youth, when they are most needed.
+
+To answer this question, I will use the following variables: 
+
+* `sleptim1`: On average, how many hours of sleep do you get in a 24-hour period?
+
+* `X_ageg5yr`: Reported Age In Five-Year Age Categories Calculated Variable
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+
+For convenience, I will rename the `brfss2013` dataset to simply `data`
+```{r}
+data<-brfss2013
+```
+
+**Research quesion 1:**
+
+I will investigate if there is an association between attending college and the frequency a person thinks about their race. The first step to tackle this issue is to create a new variable, separating the population between those that attended college and those that did not.
+ The following command lists the factor levels in the education variable
+```{r}
+data$educa %>% levels
+
+```
+The new variable, `uni`, will only have two levels: `Yes` and `No`, where `Yes` cases include only levels 5 and 6, which are those where the person has at least a year of college.
+```{r}
+data %>%mutate('uni'=ifelse(as.numeric(educa)<4,'Yes','No')) -> data
+```
+With this new variable, I created two separate tables (`summaryYes` and `summaryNo`) summarizing the data on the three studied variables for each of the two groups (which i will, from now on, call `uni='Yes'` and `uni='No'`). This separation was done so a `percentage` variable can be calculated, informing on what percentage of those in each `uni` group think about race regularly.
+```{r warning=FALSE}
+#Besides univeristy attendance, filtering is done to include only the state of interest and to remove NA results.
+
+data %>% group_by(X_state,uni,rrcognt2) %>% filter(X_state=='Arizona',!is.na(rrcognt2),!is.na(uni),uni=='Yes') %>% summarise('count'=n())-> summaryYes
+
+data %>% group_by(X_state,uni,rrcognt2) %>% filter(X_state=='Arizona',!is.na(rrcognt2),!is.na(uni),uni=='No') %>% summarise('count'=n())-> summaryNo
+
+
+summaryYes <-summaryYes %>% mutate('percentage' = count/sum(count)) 
+summaryNo <-summaryNo %>% mutate('percentage' = count/sum(count)) 
+
+```
+Visualizing this data in a stacked barplot will be useful to observe potential differences between the two groups. This can be done joining both tables and using `ggplot` as follows:
+```{r}
+rbind(summaryYes,summaryNo) -> percentRace
+p<-ggplot(aes(x=uni,y=percentage,fill=rrcognt2),data=percentRace)+geom_bar (stat='identity') + labs(x='Did the person attend university?',y='Percentage', fill='How often does the person think about their race?',title='Relative importance given to race between educational groups')
+print(p)
+```
+In this plot, it is possible to see that there appears to be little association with the relative race importance of those who never think about their race, but a strong positive association with those who think constantly about their race. 
+
+To more clearly See this change, I plotted the ratio between the percentage of those that attended college and those who did not for each level of the `rrcognt2` variable (that contains the information about race consideration frequency). A Y=1 line was included for reference to where each point should be if there was no change.
+```{r}
+(ggplot(summaryYes,aes(x=rrcognt2, y=(summaryYes$percentage/summaryNo$percentage))) + geom_point() )+ geom_abline(intercept=1, slope=0) + labs(x='How often does the person think about their race?',y="Relative frequency (uni='Yes' / uni='No')")
+```
+It appears that there is a net increase on the relative importance given to race, but the group that never thinks about their race (which, as we saw earlier, is the most numerous) barely changes.
+
+However, it is still true that this change couldstill have happened by chance, as the sample size of those that attended college is much smaller than the rest of the population. 
+
+In probability, if two variables are unrelated to each other they are said to be independent, and if one affects the other, they are dependent. I want to prove that the variables are dependant and, therefore, it is necessary to reject the null hypothesis that they are independent. To assess the probability of observing these results if the variables were independent, I ran a simulation assuming independence.
+
+A binomial distribution was used, as it assumes that the variables are independent and that the probability of success is constant. Success was defined as thinking once a day or more about one's race, and the rest as failure. The probability of success was taken to be the percentage of instances that `uni='No'`though often about their race, and the observed successes are the number of times that `uni='Yes'` did. 
+```{r}
+
+successObserved<-sum(summaryYes$count[5:7])
+n<-sum(summaryYes$count)
+theoreticalProb<-sum(summaryNo$percentage[5:7])
+dbinom(successObserved:sum(summaryYes$count),n,theoreticalProb) %>% sum()
+
+```
+With such a small probability of observing this increase due to change, it is sensible to assume that the null hypothesis (that the variables are not associated) is false. 
+
+For further analysis, the sectorization described previosuly was incorporated in `data` under the variable `reg_race`.
+```{r}
+(data %>% mutate('reg_race'=ifelse(!is.na(rrcognt2) & rrcognt2%in%c("Never","Once a year","Once a month","Once a week"),"No","Yes")))->data
+```
+An important cofounding factor in this analysis is race, both because the access to higher education is different across racial lines and because the relative importance a person gives to race varies between ethnicities. To assess this, I used the `X_race` variable and sectorized it into `white='Yes'` and `white='No'`, as minority groups are more likely to emphasise their ethnic identity. 
+
+```{r}
+(data %>% mutate('white'=ifelse(X_race=='White only, non-Hispanic',"Yes","No")))->data
+```
+I then repeat the previous analysis with `white` as a variable, and computed the count of each intersection. I also calculated the percentage of `reg_race='Yes'` in `white='Yes'` and `white='No'` groups. This was done separately for those that attended university and those that did not.
+```{r}
+data %>% group_by(X_state,white,uni,reg_race) %>% filter(X_state=='Arizona',!is.na(rrcognt2),!is.na(uni),!is.na(X_race),uni=='No') %>% summarise('count'=n())-> summaryRNO
+
+data %>% group_by(X_state,white,uni,reg_race) %>% filter(X_state=='Arizona',!is.na(rrcognt2),!is.na(uni),!is.na(X_race),uni=='Yes') %>% summarise('count'=n())-> summaryRYes
+
+summaryRYes <-summaryRYes %>% mutate('percentage' = count/sum(count)) 
+summaryRNO <-summaryRNO %>% mutate('percentage' = count/sum(count)) 
+rbind(summaryRYes,summaryRNO) -> percentR
+```
+Plotting this information, we have
+```{r}
+p<-ggplot(aes(x=white,y=percentage,fill=reg_race),data=percentR)+geom_bar (stat='identity') + facet_wrap(~uni)+labs(x='Is the person non-Hispanic white?',y='Percentage', fill='Does the person think often about their race?',title='Relative importance given to race between racial and educational groups',subtitle='Did the person attend university?')
+plot(p)
+```
+The effect attending college has on the response in non-whites is clear: there is an increase on the proportion that think often about their race. However, the effect in whites is nt clear, although there seems to be a decrease. Looking at a table of the same information 
+```{r}
+(rbind(summaryRYes,summaryRNO) %>% filter(reg_race=='Yes') ) %>% print()
+```
+We can see that 40% of non-whites that attend university think regularly about race, while only 3% of whites that attend do so. Also, 25% of non-whites that do not go to university do so, while 4.5% of whites do so. Therefore, there does seem to be an increase for non-whites and a decrease for whites although, once again, the count number for some categories is quite small (4). 
+
+To test if the variables are independent (first in the `white='Yes'` group) I will use the standard test for independence (P(A) * P(B) = P(A and B) for independent events). 
+
+Therefore, P(white and college) * P(reg_race)=p(white and college and reg_race) if the variables were independent. For this, we must compute the counts of each case:
+
+```{r}
+data %>% group_by(X_state,white,uni,reg_race) %>% filter(X_state=='Arizona',!is.na(rrcognt2),!is.na(uni),!is.na(X_race)) %>% summarise('count'=n())-> summaryTemp
+
+```
+Now we can calculate the terms of the previous expression
+P(white and attending):
+```{r}
+((summaryTemp %>% filter(uni=='Yes') %>% filter(white=='Yes'))$count %>% sum())/(summaryTemp$count %>% sum())->PWhite_and_attending
+print(PWhite_and_attending)
+```
+p(reg_race):
+```{r}
+((summaryTemp %>% filter(reg_race=='Yes'))$count %>% sum())/(summaryTemp$count %>% sum()) -> P_reg_race
+print(P_reg_race)
+```
+Now the conclusion:
+```{r}
+((summaryTemp %>% filter(reg_race=='Yes') %>% filter(uni=='Yes') %>% filter(white=='Yes'))$count %>% sum())/(summaryTemp$count %>% sum())->realWhiteIntersection
+
+print(paste('The real intersection is: ', realWhiteIntersection))
+
+print(paste('The expected intersection assuming independence is: ',PWhite_and_attending * P_reg_race))
+
+```
+It does not seem to be independent. In fact, the actual intersection is smaller than the expected one if they were independendent, which indicates that there is a negative association between attending university and thinking about race for whites. Repeating the analysis with non-whites, we find that 
+
+```{r}
+((summaryTemp %>% filter(uni=='Yes') %>% filter(white=='No'))$count %>% sum())/(summaryTemp$count %>% sum())->PNon_white_and_attending
+
+((summaryTemp %>% filter(reg_race=='Yes') %>% filter(uni=='Yes') %>% filter(white=='No'))$count %>% sum())/(summaryTemp$count %>% sum())->realNonWhiteIntersection
+
+print(paste('The real intersection is: ', realNonWhiteIntersection))
+
+print(paste('The expected intersection assuming indepenndence is: ',PNon_white_and_attending * P_reg_race))
+
+
+```
+Here we observe the oposite effect, confirming our previous suspicions.
+
+*Question 1 conclusion*
+
+* There is an association between attending university and increased importance given to race in Arizona
+
+* The increase appears to be mediated by race: there is a negative association between attending university and thinking regularly about race for whites, and a positive one for non-whites
+
+
+**Research quesion 2:**
+To start clean, I will reset the `data` variable
+```{r}
+data<-brfss2013
+```
+
+First, I will filter the cases where the responses to any of the interest variables is missing:
+```{r}
+data %>%filter(!is.na(menthlth),!is.na(avedrnk2),!is.na(drnk3ge5),!is.na(seatbelt)) ->dataNA
+
+```
+Plotting the median values of binge drinks, we can see that the median in every instance is 0.
+```{r}
+sumBinge<-dataNA %>% group_by(menthlth) %>% summarise('mean_binge'=median(drnk3ge5),count=n())
+p<-ggplot(sumBinge,aes(x=menthlth,y=mean_binge)) + geom_point()
+print(p)
+```
+Medians are not as sensible to outliers, so this is a good sign that the majority of the population does not binge drink. However, we are interested on outlier behavior in the case, and therefore the mean should be used:
+```{r}
+sumBinge<-dataNA %>% group_by(menthlth) %>% summarise('mean_binge'=mean(drnk3ge5),count=n())
+p<-ggplot(sumBinge,aes(x=menthlth,y=mean_binge)) + geom_point()
+print(p)
+```
+There is an upward trend, suggesting a positive association between mental health and binge drinking behavior. This indicates that mental health is indeed associated with self-destructive behavior.
+```{r}
+sumBinge<-dataNA %>% group_by(menthlth) %>% summarise('mean_drink'= mean(avedrnk2),'mean_binge'=mean(drnk3ge5),count=n())
+p<-ggplot(sumBinge,aes(x=menthlth,y=mean_drink)) + geom_point()
+plot(p)
+```
+Now, to look at mental health and seatbelt usagem we can see what is the mean number of days someone feels with poor mental health for each class of seatbelt usage habit 
+```{r}
+sumSeat<-dataNA %>% group_by(seatbelt) %>% summarise('Mean poor mental health days'=mean(menthlth))
+sumSeat
+```
+This indicates a trend where, the more poor mental health days, the least likely a person is to use their seatbelts. However, means cannot tell us much about the distribution of the data, which is why I chose to plot the proportion of people that had x number of poor mental health days for each seatbelt usage group. For better visibility, I divided the seatbelt usage groups into three and excuded "Never drive or ride in a car" from consideration as it is not relevant to this analysis.
+```{r}
+sumSeat<-dataNA %>% group_by(seatbelt,menthlth) %>% summarise(count=n())
+
+p<-ggplot(dataNA,aes(x=menthlth),fill=Seatbelts) + geom_histogram()
+print(p)
+dataNA %>% filter(seatbelt != "Never drive or ride in a car")->dataF
+dataF %>% mutate('seatbelt_group'=ifelse(seatbelt %in% c('Always','Nearly always'),'does',ifelse(seatbelt=='Sometimes','Sometimes','Not')))->DataFN
+
+ggplot(DataFN, aes(x=menthlth,fill=seatbelt_group))+geom_density(alpha=0.2)->p
+print(p)
+```
+This is barely readable because of a disproportional reporting of 0 poor mental health days. For that reason, we will graph this category separately.
+```{r}
+DataFN%>%filter(menthlth!=0)->DataFN2
+ggplot(DataFN2, aes(x=menthlth,fill=seatbelt_group))+geom_density(alpha=0.2)->p
+print(p)
+```
+In this graph, the density refers to the percentage of members of each of the three seatbelt usage groups. It is clear that there is a greater concentration of people who use seatbelts in the groups that have less poor mental health days. The inverse is trus for those that do not.
+```{r}
+DataFN%>%filter(menthlth==0)->DataFN3
+ggplot(DataFN3, aes(x=menthlth,fill=seatbelt_group))+geom_histogram(binwidth=1,alpha=0.2)->p
+print(p)
+
+```
+From these two graphs, it is clear that the vast majority of people with 0 poor mental health days do use their seatbelt, and that, with more poor mental health days, it is more likely to find people that do not use their seatbelts.
+
+This indicates that poor mental health is associated with lack of seatbelt usage, which indicates it can be qualified as self-destructive behavior.
+
+*Question 2 conclusions* 
+
+* Decreased mental health is associated with binge drinking and not using the seatbelt 
+
+
+**Research quesion 3:**
+To answer this question, we must first filter the data to remove NA values from any of the variables
+```{r}
+data %>% filter(!is.na(sleptim1),!is.na(X_ageg5yr)) ->dataNA
+```
+Next, it will be necessary to calculate the mean by age strata. 
+```{r}
+aggregate(dataNA$sleptim1,list(dataNA$X_ageg5yr),mean) -> meanSleep
+print(meanSleep)
+```
+Unfortunately, in no age group the mean is actually equal to the recomended 8 hours of sleep. However, this does not tell us about how many people do get that amount of sleep. For that, we must compute the percentile of those that do sleep for 8 hours a day. this can be done with
+
+```{r}
+
+```
+
+
+Before plotting the data, we will change the labels for increased reatability
+```{r}
+newLabel<-c(18,25,30,35,40,45,50,55,60,65,70,75,80)
+meanSleep$Group.1<-newLabel
+```
+We can plot the mean sleeping time by age group to further investigate the relationship.
+```{r}
+p<-meanSleep %>% ggplot(aes(x=Group.1,y=x)) + geom_point()
+print(p)
+```
+
+To examine the skew in each age group, we can compute the median and plot it together
+```{r}
+aggregate(dataNA$sleptim1,list(dataNA$X_ageg5yr),median) -> medSleep
+cbind(meanSleep,'x2'=medSleep[,2])->bindSleep
+ggplot(bindSleep)+geom_point(aes(x=Group.1,y=x),color='red')+geom_point(aes(x=Group.1,y=x2),color='blue')
+```
+
+We can see that skew is mild, but it exists. In the youngest age group, the median is smaller than the mean, which means that it is right skewed (many outliers oversleeping). During adult years, the oposite is true, and the skew goes back to youth levels during seniority.
+
+*Conclusions question 3*
+
+* There is an U-shaped association between age and sleeping time
+
+* The association between age and sleeping time does not correlate with necessary hours of sleep
+
+* Young adults and senior sleep data is right skewed, and adult sleep data is left skewed. 
