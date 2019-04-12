@@ -1,0 +1,254 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+* * *
+
+## Part 1: Data
+
+The GSS data is obtained through random sampling, where each household in the United States is equally likely to be selected for an in-person interview to one of its adult members. However, there are some caveats: between 1972 to 2004, the responses could only be computed for English-speaking Americans and, from 2004 to date, only to English and Spanish-speaking Americans. Also, group quarters are non included in the analysis. Therefore, these results can be said to be representative of the United States English-speaking (and Spanish-speaking since 2004) adult population who lives in registered homes.
+
+One possible source of bias would be non-respondent rates, as responding is voluntary. However, as response rates have been consistently over 70% (with a slight drop in recent years), the effect, if existent, is minor. As other methods are used when in-person interviews are dificult, geographic inaccesibility is not a source of bias.
+
+As this is an observational study and there has been no random assignment, no causal conclusions can be drawn, and everything is based in association. We must be wary of cofounding variables when drawing conclusions.
+
+
+* * *
+
+## Part 2: Research question
+
+Trust in democratic institutions is crucial for a functioning democracy. In a bipartisan system such as the one adopted in America, alternancy of power is common place and, with the change of party, the trust in the country's institutions should be unchanged, as institutions and elected officials should act in the name of the constitution and not on partisan grounds. Therefore, verifying if the democratic culture in the United States allows for trust in the Executive Branch and beyond party lines is crucial.
+
+To assess this concern, I will attempt to answer the question **Is there a difference in trust deposited by Americans in the executive branch when a party with oposite ideology is in office?**. General political orientation was used instead of party afiliation because of the high number of independent voters, who still hold opinions.
+
+To answer this question, I will use the following variables, which are presented with the corresponding questions that were asked:
+
+* `polviews`: We hear a lot of talk these days about liberals and conservatives. I'm going to show you a seven-point scale on which the political views that people might hold are arranged from extremely liberal - point 1 - to extremely conservative - point. Where would you place yourself on this scale?
+
+* `confed`: I am going to name some institutions in this country. As far as the people running these institutions are concerned, would you say you have a great deal of confidence, only some confidence, or hardly any confidence at all in them? e. Executive branch of the federal government.
+
+* `year`: GSS YEAR FOR THIS RESPONDENT
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+First, we will create a vector `demYear` which includes the the the years in which democrats were in office, and `repYear` for republicans. This data was manually extracted from [Wikipedia](https://en.wikipedia.org/wiki/List_of_Presidents_of_the_United_States):
+```{r}
+demYear<-c(1977:1980,1993:2000,2009:2017)
+repYear<-c(1969:1976,1981:1992,2001:2008,2017:2019)
+```
+
+There will be no filtering for NA values in `polviews` and `confed` because they represent people who are indifferent or alienated from politics, and this is an important information and, therefore, should be included in percentual calculations. There is no NA value for `year`.
+
+In this analysis, I will use moderates as a baseline for trust in the institutions to control for general government unpopularity. Deviations from this baseline should be explained mostly by political views.
+
+First, lets visualize the mean evolution of distrust on the government using a time series.
+
+```{r}
+ggplot(gss,aes(x=year, fill=confed))+geom_density(alpha=0.5)
+```
+There is no clear trend in the overall data. Indifference (as measured by NA responses) seems to be up in recent years, but confidence seems to fluctuate with each new term (which is the expected behavior, as recently-elected officials often have greater public backing). The lack of a time-dependent pattern occurs because political opinions fluctuate within each term. Therefore, with this plot, we discovered a characteristic of the data that will be accounted for later.
+
+To examine how distrust in the government differs between political groups, we will take the percentage of those who claim to have "a great deal" of confidence in the executive branch as an indicator of trust. For interpretability, I will conflate all liberals into a `Liberal` level and all conservatives in a `Conservative` level in a new variable called `PolView`. Moderates are untouched.
+
+To visualize this information, we must find the relative frequency of trust in the government ($\frac{\text{# of "A Great Deal" responses}}{\text{Total respondents}}$) per year, and plot it as a time series.
+
+
+```{r warning=FALSE}
+#comppute the counts for each ideology level and each year
+gss %>% group_by(year,polviews) %>% summarise('counts'=n())->a
+
+#compute counts for each year,polviews and confed intersection
+gss %>% group_by(year,polviews,confed) %>% summarise('counts'= n()) ->b
+
+#add a column with the n for each political ideology
+counts_per_pol<- apply(b,1,function(x){a$counts[which(x[1]==a$year&x[2]==a$polviews)]})%>% 
+  lapply(function(x){ifelse(length(x)==0,'NA',x)}) 
+cbind(b,'countperpol'=unlist(counts_per_pol))->b
+
+
+#filter only "A Great Deal" rows
+bpos<-b %>% filter(confed=='A Great Deal')
+
+#Create PolView Variable
+bpos<-bpos%>% ungroup() %>% 
+  mutate('PolView'=ifelse(polviews%in%c('Extremely Liberal','Liberal','Slightly Liberal'),'Liberal',ifelse(polviews!='Moderate','Conservative','Moderate')))
+
+#Compute relative frequency for each level of interest
+bpos %>% group_by(year,PolView) %>% summarise('prop'=sum(counts)/sum(as.numeric(countperpol)))->bposSum
+
+#Separate Moderates into separate dataframe and subtract their trust from each ideological level's trust
+bposSum %>% filter(PolView == 'Moderate')->modbpos
+bposSum %>% filter(PolView != 'Moderate')->posbpos
+posbpos$prop-rep(modbpos$prop,each=2)->normPos
+
+
+normPos<-data.frame(posbpos[,1:2],'prop'=normPos)
+
+#Create dataframe informing which party holds the presidency
+data.frame('year'=1973:2019) %>% mutate('party'=ifelse(year%in%repYear,'Republican','Democrat')) %>% mutate('val'=0)->whichParty
+
+ggplot()+geom_line(data=normPos, aes(x=year,y=prop,color=PolView))+geom_point(data=whichParty,aes(x=year,y=val,color=party),group=1)
+```
+
+It appears that conservative trust rates increase much more when Republcans are in power than liberals with Democrats. Democrats, on the other hand, have huge drops in trust when republicans take office but those don't reverse themselves when a democrat is elected (up untill 2010 with Obama, which caused a huge spike). This partially explains the lack of a pattern in the previous graph: we were looking at two distinct populations.
+
+Now, lets look at the mean trust each political group has on the executive branch if a party closer to their beliefs is in power and add our previous `PolView` variable to the raw data in `gss`, thus creating `gssParty`. I also created a variable `agrees` which stores the information of whether the person agrees generally with the politics of those in office (based on their party).
+```{r warning=FALSE}
+gssParty<-merge(gss,whichParty,by.x = c("year"),by.y = c("year"),all=TRUE) %>%mutate('PolView'=ifelse(polviews%in%c('Extremely Liberal','Liberal','Slightly Liberal'),'Liberal',ifelse(polviews!='Moderate','Conservative','Moderate')))%>%
+  mutate('agrees'=ifelse(PolView=='Conservative'&party=='Republican'|PolView=='Liberal'&party=='Democrat','Agrees','Disagrees')) %>%
+  mutate('trusts'=ifelse(confed=='A Great Deal',1,0)) %>% filter(!is.na(trusts))
+
+gssParty %>% group_by(PolView,agrees) %>% summarise('mean_trust'=mean(trusts))
+```
+The use of a mean was done because computing the mean of a variable where 1 represents a success and 0 represents a failure is the same as calculating the proportion of successes. This technique will be used later as well.
+
+It seems that both liberals and conservatives have simmilar levels of distrust with their oposing party, but liberals seem more skeptical of the Democrats than conservatives are about Republicans. However, this difference will be assessed further in part 4.
+
+In this case, I did not normalize for fluctuations in general public opinion because, as this is not a time series, this infomration ceases to be relevant.
+
+It is also interesting to look at the US population as a whole:
+```{r warning=FALSE}
+gssParty %>% group_by(agrees) %>% summarise('mean_trust'=mean(trusts))
+```
+Again, it seems to be a general US trend to trust better the institutions lead by a party one agrees with. 
+* * *
+
+## Part 4: Inference
+From what was observed in part 3, I drafted the following hypotheses (expressed verbally):
+* Null hypothesis: There is no difference in trust in the executive branch between the groups that agree and that disagree with the sitting President's party.
+* Alternative hypothesis: There is a difference in the proportion of people that trust the executive branch between those that agree or those who disagree with the sitting President's party
+Or, in formal notation
+
+ $H_0$: $p_{trust,agree} - p_{trust,disagree} = 0$
+
+ $H_a$: $p_{trust,agree} - p_{trust,disagree} \ne 0$
+
+If we reject the null hypothesis, a secondary question will be asked regarding the ideological groups.
+
+To assess these hypotheses, we must first assess the conditions for the Central Limit Theorem to be applicable. Those are:
+
+* Independence: the sample must be less than 10% of the population and it must be a random sample.
+
+The sample of this survey is well bellow 30.000.000, which is aproximately 10% of the US population and, therefore, meets the first condition. Also, although potential biases were discussed in the first section as to why this sample might not be representative of the whole population, this was indeed a random sample of the home-owning subpopulation of America.
+
+* Sample size/skew: there must be at least 10 successes and 10 failures.
+
+We can easilly check that with
+
+```{r}
+gssParty %>% group_by(trusts) %>% summarise('counts'= n())->n
+print(n)
+```
+We are well above the require threshold to aproximate normality in the sampling distribution.
+
+As this is a comparison of proportions, I will use the normal sampling distribtion test, which assesses the probability of observing a proportion of $\hat{p}$ in a population with a true proportion $p$. If the probability of observing the value given that there is no difference between the proportions of the two groups is too low (or, mathematically, $P(\hat{p} | H_{0} is true)$), we can reject the null hypothesis as it is too unlikely to observe what we did.
+
+For our assumption that both proportions are the same (or, in other words, their difference is zero), we can assume that the sampling mean of the difference will also be 0. Our observed difference, or $\hat{p_1}-\hat{p_2}$ is:
+```{r}
+gssParty %>% group_by(agrees) %>% summarise('mean_trust'=mean(trusts))->p
+p$mean_trust [2] - p$mean_trust[3]
+```
+This seems rather small. However, as the variance of the sampling distribution decreases with an increasing sample size, and as our $n$ equals
+```{r}
+gssParty %>% summarise('counts'= n())
+```
+this could still be significant. This makes intuitive sense, as observing a proportion difference in a bigger sample is a less likely scenario than observing a different proportion in a smaller sample.
+
+Now, we quantify the probability of observing the difference we did assuming that the null hypothesis is true. For this, as our sampling distribution is nearly normal as it follows the requirements for the CLT,I will calculate the area under the normal distribution $\hat{p} ~ N(mean=0,SE=\sqrt{\frac{{p_{agree}(1-p_{agree)}}}{n_{agree}}+\frac{p_{disagree}(1-p_{disagree)}}{n_{disagree}}}$ and $\sigma = SE$ for values more extreme that our observation in a two-tailed fashion.
+
+As I am using 1 for succes and 0 for failure, a mean is the same as a proportion of successes, and I will use that to ease computations.
+
+For assessing our hypotheses, we can use the `inference` function from `rstat`:
+```{r}
+inference(y=trusts,x=agrees,data=gssParty,statistic='mean',type='ht',alternative='twosided',method='theoretical', null=0)
+```
+Note that the `inference` function computed $H_0: p_{agrees} = p_{disagrees}$, but that is conceptually the same as $H_0: p_{agrees} - p_{disagrees} = 0$, as both inform that there is no difference between the population parameters.
+
+The left plot shows the distribution of successes (1) and failures (0), and the right plot shows the area under the normal distribution that we calculated. As predicted, the extremely high $n$ shrank the variance of the curve, making our small deviation highly significant and unlikely given the null hypothesis. 
+
+The usual threshold for significance is $p<0.05$ and, with a $p<0.0001$, it is evident that observing our sample given that the null hypothesis is true is highly unlikely. In context, it means that there is less than a 0.01% chance of observing our sample if indeed there was no difference in trust deposited in the federal government if you agreed or disagreed with the president's party.
+
+Another way to verify this result is to compute a confidence interval, which would tell us the interval which we expect the true population parameter (difference between the two proportions) to be based on our sample, with 95% confidence. If this interval does not include $p_{agrees}-p_{disagrees}=0$, it further confirms that $H_0$ is not true; that is, there is a difference in the proportion of people that trust the executive branch between the groups that agree or disagree with the politics of the sitting president.
+
+To do that, we can once again use the `inference` function:
+
+```{r}
+inference(y=trusts,x=agrees,data=gssParty,statistic='mean',type='ci',alternative='twosided',method='theoretical', order=c('Agrees','Disagrees'))
+```
+From the confidence interval, we are 95% condifence that the difference between $p_{agrees} \text{and} p_{disagrees}$ is inside the interval (0.0747,0.0929), which does not include 0. This agrees with our previous result and further confirms it. It is also interesting to note the small range of this interval, which can only be obtained with huge $n$ values.
+
+With these two independent results, we can affirm that there is overwhelming evidence to reject $H_0$, that is, reject the assumption that there is no difference in trust in the executive branch between the two groups, as observing our sample if that was true would be extremely unlikely. Because of that, we accept the alternative hypothesis $H_a$ that there is a difference between these two groups.
+
+As our exploratory analysis suggested that there were two sub-populations to our data (Liberals and Conservatives, with Moderates as a baseline), we are going to further explore these subpopulations. Recovering our table from section 3, we have
+```{r}
+gssParty %>% group_by(PolView,agrees) %>% summarise('mean_trust'=mean(trusts))
+```
+From these results, based on what was discussed earlier, I create this pair of hypotheses
+ 
+* Null hypothesis: there is no difference between the proportion of those who trust the executive branch if they agree with their politics between liberals and conservatives (or $H_0:p_{conservative and agree}=p_{liberal and agree}$ )
+
+* Alternative hypothesis: there is a difference between the two aforementioned groups (or $H_a : p_{conservative and agree} \ne p_{liberal and agree}$)
+
+From the data, I *could* hypothesise that $p_{conservative and agree} > p_{liberal and agree}$, but I chose to take the more conservative route.
+
+To test this hypothesis, we will also use the CLT but, for that, we must check the conditions again. The total sample size is smaller than 10% of the population, as it is the same as before, and for the same reason it is also randomly sampled, with the reservations made previously. About the $n$:
+```{r}
+gssParty %>% group_by(PolView,agrees,trusts) %>% summarise('counts'= n())->n
+any(n$counts<300)
+```
+There are no instances where $n$ is smaller than 300, so it is very safe to assume sampling normality.
+
+Therefore, we employ the same method as before but, for that, we must create a third variale `polagree` joining the information given by `PolView` and `agrees` and filter the groups of interest for our hypothesis (`Conservative Agree` and `Liberal Agree`):
+```{r}
+gssParty %>% mutate('polagree'=paste(PolView,agrees,sep=' '))  %>% filter(polagree %in%c('Conservative Agrees','Liberal Agrees'))-> gssParty
+
+```
+Now, we can calculate the confidence intervals:
+```{r}
+inference(y=trusts,x=polagree,data=gssParty,statistic='mean',type='ci',alternative='twosided',method='theoretical', order=c('Conservative Agrees','Liberal Agrees'))
+
+```
+From this confidence interval, we can be 95% confident that the true population parameter - that is, the true difference between the proportion of liberals in a Democrat presidency who trust the executive branch and the proportion of conservatives in a Republican presidency that do - is not zero, as it is not included in the confidence interval. We can also check this through a direct hypothesis test:
+
+```{r}
+inference(y=trusts,x=polagree,data=gssParty,statistic='mean',type='ht',alternative='twosided',method='theoretical', null=0)
+
+```
+With such a low p-value, we can reject the null hypothesis and claim that the alternative - that there is a difference in the proportion of those who trust the executive branch between Conservatives and Liberals in a presidency with an ideologically simmilar party in power - is true.
+
+Conclusions:
+
+* It is very likely that there is an association between the trust deposited in the executive branch and the individual agreeing or not with the President's political views
+
+* There is very likely an association between the person being Conservative and an increased trust in Republican presidents compared to Liberals and Democrats.
+
+
+Regarding the research question, the answer is a resounding "Yes". In fact, we learned that the fluctuations of this trust are different among Liberals and Conservatives. Of course, as I mentioned before, our sample is not representative of the whole US population, and there is no way to know if this variation is due to different behavior of the two political groups or if the Republican party was just able to find candidates that better resonate with its base. 
+
+However, this exploration exibiths a glimpse on the behavior of political groups in America. It would be interesting to better investigate these observations, perhaps in a causal way. Also, further characteristics of the two groups could be taken into account to perhaps explain this discrepancy: could liberals encompass a wider array of ideologies, making them more skeptical about Democrats? Or are conservatives more inclined to accept the "least worst"? 
+
+Understanding the nuances of political groups in America, or understanding how the Republican party managed to get more trust than the Democrats, is interesting to cater to them in campaigns, but also to better understand how polarization happens and how political dynamics happen in the electorate level.
+
